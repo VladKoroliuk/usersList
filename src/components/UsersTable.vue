@@ -1,46 +1,29 @@
 <template>
   <div>
     <div class="controls">
-      <div class="search">
-        <input
-          type="text"
-          v-model="searchQuery"
-          placeholder="Enter your search query"
-          @input="page = 1"
-        />
+      <div>
+        <div class="search">
+          <input
+            type="text"
+            v-model="searchQuery"
+            placeholder="Enter your search query"
+            @input="page = 0"
+          />
+          <div>
+            <select v-model="sortBy">
+              <option value="id" selected>No sorting</option>
+              <option value="name">Name</option>
+              <option value="username">User name</option>
+              <option value="email">Email</option>
+              <option value="phone">Phone</option>
+            </select>
+          </div>
+        </div>
       </div>
-      <div class="pagination">
-        <button @click="prevPage">
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M15.5 19L8.5 12L15.5 5"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
-        <button @click="nextPage">
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M8.5 19L15.5 12L8.5 5"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
+      <div v-if="selected.length != 0">
+        <button class="default-btn" @click="removeUsers">
+          Delete {{ selected.length }}
+          {{ selected.length > 1 ? "users" : "user" }}
         </button>
       </div>
     </div>
@@ -56,77 +39,109 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="user in paginatedAndSearchedUsers" :key="user.id">
-          <td>{{ user.id }}</td>
-          <td>{{ user.name }}</td>
-          <td>{{ user.username }}</td>
-          <td>{{ user.email }}</td>
-          <td>{{ user.phone }}</td>
-        </tr>
+        <UsersTableRow
+          v-for="user in paginatedAndSearchedAndSortedUsers"
+          :key="user.id"
+          :user="user"
+          :selectedRows="selected"
+          :isSelected="isUserSelected(user.id)"
+          @select="toggleSelect"
+        />
       </tbody>
       <tfoot>
         <tr>
-          <th scope="row" colspan="2">Total users</th>
+          <td scope="row" colspan="2">Total users</td>
           <td colspan="2">{{ users.length }}</td>
         </tr>
       </tfoot>
     </table>
+    <div>
+      <UsersPagination
+        v-model="page"
+        :contentLength="sortedAndSearchedUsers.length"
+        :contentPerPage="usersPerPage"
+      />
+    </div>
   </div>
 </template>
 <script>
+import UsersTableRow from "./UsersTableRow.vue";
+import UsersPagination from "./UsersPagination.vue";
+import { mapMutations } from "vuex";
+
 export default {
   name: "UserTable",
-  data: function () {
-    return {
-      page: 1,
-      perPage: 10,
-      searchQuery: "",
-    };
-  },
   props: {
     users: {
       type: Array,
       required: true,
     },
   },
+  components: {
+    UsersTableRow,
+    UsersPagination,
+  },
+  data: function () {
+    return {
+      page: 0,
+      usersPerPage: 10,
+      searchQuery: "",
+      selected: [],
+      sortBy: "id",
+    };
+  },
   methods: {
-    nextPage() {
-      const isEnd = this.page == this.pages - 1;
-      if (isEnd) {
-        return;
+    ...mapMutations(["deleteUsers"]),
+    toggleSelect(userID) {
+      if (this.isUserSelected(userID)) {
+        this.selected = this.selected.filter((id) => userID !== id);
+      } else {
+        this.selected = [...this.selected, userID];
       }
-      this.page++;
     },
-    prevPage() {
-      if (this.page === 1) {
-        return;
+    isUserSelected(userId) {
+      const candidate = this.selected.find((id) => id === userId);
+      return !!candidate;
+    },
+    removeUsers() {
+      const sure = confirm("Are you sure?");
+      if (sure) {
+        this.deleteUsers(this.selected);
       }
-      this.page--;
+      this.selected = [];
     },
   },
   computed: {
-    pages() {
-      const length = this.searchedUsers.length;
-
-      if (length < this.perPage) {
-        return 1;
-      }
-      return Math.ceil(length / this.perPage);
+    paginatedAndSearchedAndSortedUsers() {
+      const start = this.page * this.usersPerPage;
+      const end = start + this.usersPerPage;
+      return this.sortedAndSearchedUsers.slice(start, end);
     },
-    paginatedAndSearchedUsers() {
-      const start = this.page * this.perPage;
-      const end = start + this.perPage;
-      return this.searchedUsers.slice(start - 1, end);
+    sortedAndSearchedUsers() {
+      const users = JSON.parse(JSON.stringify(this.searchedUsers));
+
+      const sortForNumbers = (a, b) => {
+        return a[this.sortBy] - b[this.sortBy];
+      };
+
+      const sortForStrings = (a, b) => {
+        return a[this.sortBy].localeCompare(b[this.sortBy]);
+      };
+
+      const sorted = users.sort(
+        typeof this.users[0][this.sortBy] === "string"
+          ? sortForStrings
+          : sortForNumbers
+      );
+      return sorted;
     },
     searchedUsers() {
       if (!this.searchQuery) {
         return this.users;
       }
 
-      const query = this.searchQuery.toLowerCase();
-
-      return this.users.filter(
-        (user) => user.name.toLowerCase().indexOf(query) > -1
+      return this.users.filter((user) =>
+        user.name.toLowerCase().includes(this.searchQuery.toLowerCase())
       );
     },
   },
